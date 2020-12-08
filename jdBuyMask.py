@@ -1,6 +1,6 @@
 # -*- coding=utf-8 -*-
 '''
-京东抢购口罩程序
+京东抢购商品程序
 '''
 import requests
 import time
@@ -466,17 +466,17 @@ while (1):
             skuidUrl = 'https://item.jd.com/' + skuId + '.html'
             response = checkSession.get(i)
             if (response.text.find('无货') > 0):
-                logger.info('[%s]类型口罩无货', skuId)
+                logger.info('[%s]类型商品无货', skuId)
             else:
                 if item_removed(skuId):
-                    logger.info('[%s]类型口罩有货啦!马上下单', skuId)
+                    logger.info('[%s]类型商品有货啦!马上下单', skuId)
                     if buyMask(skuId):
                         message.send(skuidUrl, False)
                         sys.exit(1)
                     else:
                         message.send(skuidUrl, False)
                 else:
-                    logger.info('[%s]类型口罩有货，但已下柜商品', skuId)
+                    logger.info('[%s]类型商品有货，但已下柜商品', skuId)
         timesleep = random.randint(3, 8)
         time.sleep(timesleep)
         if flag % 20 == 0:

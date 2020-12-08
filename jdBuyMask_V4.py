@@ -2,25 +2,29 @@
 '''
 2020/2/13
 (避免滥用，代码已经废弃，现已不更新，有需要请适量使用exe版本)
-京东抢购商品程序
-通过商品的skuid、地区id抢购
+京东抢购商品程序V3版本
 '''
 import sys
+import traceback
 
-import requests
 from bs4 import BeautifulSoup
 
 from config import Config
 from jdProgram import *
+from jdlogger import logger
 from message import message
-from util import getconfigMd5, _setDNSCache
+from util import *
+from util import _setDNSCache
 
-global cookies_String, mail, sc_key, messageType, modelType, area, skuidsString, skuids, captchaUrl, eid, fp, payment_pwd
+'''
+需要修改
+'''
+global cookies_String, mail, sc_key, messageType, area, skuidsString, skuids, captchaUrl, eid, fp, payment_pwd, token
 
 
 def getconfig():
-    global cookies_String, mail, sc_key, messageType, modelType, area, skuidsString, skuids, captchaUrl, eid, fp, payment_pwd
     global_config = Config()
+    global cookies_String, mail, sc_key, messageType, area, skuidsString, skuids, captchaUrl, eid, fp, payment_pwd, token
     # cookie 网页获取
     cookies_String = global_config.getRaw('config', 'cookies_String')
     # 有货通知 收件邮箱
@@ -29,18 +33,13 @@ def getconfig():
     sc_key = global_config.getRaw('config', 'sc_key')
     # 推送方式 1（mail）或 2（wechat）
     messageType = global_config.getRaw('config', 'messageType')
-    # 下单模式
-    modelType = global_config.getRaw('V2', 'model')
     # 地区id
     area = global_config.getRaw('config', 'area')
     # 商品id
-    skuidsString = global_config.getRaw('V2', 'skuids')
+    skuidsString = global_config.getRaw('V3', 'skuid')
     skuids = str(skuidsString).split(',')
     # 验证码服务地址
     captchaUrl = global_config.getRaw('Temporary', 'captchaUrl')
-    if not modelType:
-        logger.error('请在configDemo.ini文件填写下单model')
-
     if len(skuids[0]) == 0:
         logger.error('请在configDemo.ini文件中输入你的商品id')
         sys.exit(1)
@@ -50,6 +49,7 @@ def getconfig():
     # eid
     eid = global_config.getRaw('Temporary', 'eid')
     fp = global_config.getRaw('Temporary', 'fp')
+    token = global_config.getRaw('Temporary', 'token')
     # 支付密码
     payment_pwd = global_config.getRaw('config', 'payment_pwd')
 
@@ -66,12 +66,12 @@ submit_captcha_text = ''
 encryptClientInfo = ''
 submit_Time = 0
 session = requests.session()
+checksession = requests.session()
 session.headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/531.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3",
     "Connection": "keep-alive"
 }
-checksession = requests.session()
 checksession.headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/531.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3",
@@ -86,6 +86,13 @@ def get_tag_value(tag, key='', index=0):
     else:
         value = tag[index].text
     return value.strip(' \t\r\n')
+
+
+def response_status(resp):
+    if resp.status_code != requests.codes.OK:
+        print('Status: %u, Url: %s' % (resp.status_code, resp.url))
+        return False
+    return True
 
 
 for item in cookies_String.split(';'):
@@ -107,11 +114,10 @@ def validate_cookies():
             }
             resp = session.get(url=targetURL, params=payload, allow_redirects=False)
             if resp.status_code == requests.codes.OK:
-                logger.info('校验是否登录[成功]')
+                logger.info('登录成功')
                 return True
             else:
-                logger.info('校验是否登录[失败]')
-                logger.info('请在configDemo.ini文件下更新cookie')
+                logger.info('第【%s】次请重新获取cookie', flag)
                 time.sleep(5)
                 continue
         except Exception as e:
@@ -136,7 +142,7 @@ def getUsername():
     resultText = resultText.replace('jQuery339448(', '')
     resultText = resultText.replace(')', '')
     usernameJson = json.loads(resultText)
-    logger.info('登录账号名称[%s]', usernameJson['nick'])
+    logger.info('登录账号名称' + usernameJson['nick'])
 
 
 '''
@@ -165,6 +171,58 @@ def cancel_select_all_cart_item():
         'random': random.random()
     }
     resp = session.post(url, data=data)
+    if resp.status_code != requests.codes.OK:
+        print('Status: %u, Url: %s' % (resp.status_code, resp.url))
+        return False
+    return True
+
+
+'''
+勾选购物车中的所有商品
+'''
+
+
+def select_all_cart_item():
+    url = "https://cart.jd.com/selectAllItem.action"
+    data = {
+        't': 0,
+        'outSkus': '',
+        'random': random.random()
+    }
+    resp = session.post(url, data=data)
+    if resp.status_code != requests.codes.OK:
+        print('Status: %u, Url: %s' % (resp.status_code, resp.url))
+        return False
+    return True
+
+
+'''
+删除购物车选中商品
+'''
+
+
+def remove_item():
+    url = "https://cart.jd.com/batchRemoveSkusFromCart.action"
+    data = {
+        't': 0,
+        'null': '',
+        'outSkus': '',
+        'random': random.random(),
+        'locationId': '19-1607-4773-0'
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.25 Safari/537.36 Core/1.70.37",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Referer": "https://cart.jd.com/cart.action",
+        "Host": "cart.jd.com",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Encoding": "zh-CN,zh;q=0.9,ja;q=0.8",
+        "Origin": "https://cart.jd.com",
+        "Connection": "keep-alive"
+    }
+    resp = session.post(url, data=data, headers=headers)
+    logger.info('清空购物车')
     if resp.status_code != requests.codes.OK:
         print('Status: %u, Url: %s' % (resp.status_code, resp.url))
         return False
@@ -249,59 +307,45 @@ def change_item_num_in_cart(sku_id, vender_id, num, p_type, target_id, promo_id)
     return json.loads(resp.text)['sortedWebCartResult']['achieveSevenState'] == 2
 
 
-'''
-添加商品到购物车
-'''
-
-
-def add_item_to_cart(sku_id):
-    url = 'https://cart.jd.com/gate.action'
-    payload = {
-        'pid': sku_id,
-        'pcount': 1,
-        'ptype': 1,
-    }
-    resp = session.get(url=url, params=payload)
-    if 'https://cart.jd.com/cart.action' in resp.url:  # 套装商品加入购物车后直接跳转到购物车页面
-        result = True
-    else:  # 普通商品成功加入购物车后会跳转到提示 "商品已成功加入购物车！" 页面
-        soup = BeautifulSoup(resp.text, "html.parser")
-        result = bool(soup.select('h3.ftx-02'))  # [<h3 class="ftx-02">商品已成功加入购物车！</h3>]
-
-    if result:
-        logger.info('%s  已成功加入购物车', sku_id)
-    else:
-        logger.error('%s 添加到购物车失败', sku_id)
-
-
-def get_checkout_page_detail():
+def get_marathon_page_detail():
     """获取订单结算页面信息
 
     该方法会返回订单结算页面的详细信息：商品名称、价格、数量、库存状态等。
 
     :return: 结算信息 dict
     """
-    url = 'http://trade.jd.com/shopping/order/getOrderInfo.action'
+    url = 'https://marathon.jd.com/seckill/seckill.action'
     # url = 'https://cart.jd.com/gotoOrder.action'
     payload = {
-        'rid': str(int(time.time() * 1000)),
+        'skuId': skuidsString,
+        'num': 1,
+        'rid': str(int(time.time())),
     }
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/531.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3",
-        "Referer": "https://cart.jd.com/cart.action",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+        "Referer": "https://item.jd.com/",
         "Connection": "keep-alive",
-        'Host': 'trade.jd.com',
+        'Host': 'marathon.jd.com',
     }
     try:
         resp = session.get(url=url, params=payload, headers=headers)
+        # logger.info(resp.text)
         if not response_status(resp):
             logger.error('获取订单结算页信息失败')
+            # logger.info(resp.text)
             return ''
-        if '刷新太频繁了' in resp.text:
+        elif '刷新太频繁了' in resp.text:
+            logger.info('失败：刷新太频繁了')
+            # logger.info(resp.text)
             return '刷新太频繁了'
+        elif '再次抢购' in resp.text:
+            logger.info('失败：抢购未成功')
+            # logger.info(resp.text)
+            return '抢购未成功'
+
         soup = BeautifulSoup(resp.text, "html.parser")
-        risk_control = get_tag_value(soup.select('input#riskControl'), 'value')
+        print(soup)
         showCheckCode = get_tag_value(soup.select('input#showCheckCode'), 'value')
         if not showCheckCode:
             pass
@@ -311,6 +355,7 @@ def get_checkout_page_detail():
                 global is_Submit_captcha, encryptClientInfo
                 encryptClientInfo = get_tag_value(soup.select('input#encryptClientInfo'), 'value')
                 is_Submit_captcha = True
+        risk_control = get_tag_value(soup.select('input#riskControl'), 'value')
 
         order_detail = {
             'address': soup.find('span', id='sendAddr').text[5:],  # remove '寄送至： ' from the begin
@@ -319,7 +364,7 @@ def get_checkout_page_detail():
             'items': []
         }
 
-        logger.info("下单信息：%s", order_detail)
+        logger.info("下单信息：%s, risk_control: %s", (order_detail, risk_control))
         return risk_control
     except requests.exceptions.RequestException as e:
         logger.error('订单结算页面获取异常：%s' % e)
@@ -329,7 +374,7 @@ def get_checkout_page_detail():
 
 
 '''
-下柜商品检测
+商品下柜检测
 '''
 
 
@@ -352,124 +397,46 @@ def item_removed(sku_id):
 '''
 
 
-def normalModeBuyMask(sku_id):
-    cancel_select_all_cart_item()
-    cart = cart_detail()
-    if sku_id in cart:
-        logger.info('%s 已在购物车中，调整数量为 %s', sku_id, 1)
-        cart_item = cart.get(sku_id)
-        change_item_num_in_cart(
-            sku_id=sku_id,
-            vender_id=cart_item.get('vender_id'),
-            num=1,
-            p_type=cart_item.get('p_type'),
-            target_id=cart_item.get('target_id'),
-            promo_id=cart_item.get('promo_id')
-        )
-    else:
-        add_item_to_cart(sku_id)
-    risk_control = get_checkout_page_detail()
+def buyMask(sku_id):
+    risk_control = get_marathon_page_detail()
+
     if risk_control == '刷新太频繁了':
         return False
-    if len(risk_control) > 0:
-        if submit_order(session, risk_control, sku_id, skuids, submit_Time, encryptClientInfo, is_Submit_captcha,
-                        payment_pwd, submit_captcha_text, submit_captcha_rid):
-            return True
-    return False
-
-
-def fastModeBuyMask(sku_id):
-    add_item_to_cart(sku_id)
-    risk_control = get_checkout_page_detail()
-    if risk_control == '刷新太频繁了':
+    if risk_control == '抢购未成功':
         return False
-    if len(risk_control) > 0:
-        if submit_order(session, risk_control, sku_id, skuids, submit_Time, encryptClientInfo, is_Submit_captcha,
-                        payment_pwd, submit_captcha_text, submit_captcha_rid):
-            return True
-    return False
+    # if len(risk_control) > 0:
+
+    if submit_marathon(session, risk_control, sku_id, skuids, submit_Time, encryptClientInfo, is_Submit_captcha,
+                    payment_pwd, submit_captcha_text, submit_captcha_rid, eid, fp, token):
+        return True
 
 
-'''
-删除购物车选中商品
-'''
+def V4check(skuId):
+    select_all_cart_item()
+    remove_item()
+    validate_cookies()
+    logger.info('校验是否还在登录')
+    # add_item_to_cart(skuId)
+    if not item_removed(skuId):
+        logger.info('[%s]已下柜商品', skuId)
+        sys.exit(1)
 
 
-def remove_item():
-    url = "https://cart.jd.com/batchRemoveSkusFromCart.action"
-    data = {
-        't': 0,
-        'null': '',
-        'outSkus': '',
-        'random': random.random(),
-        'locationId': '19-1607-4773-0'
-    }
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.25 Safari/537.36 Core/1.70.37",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Referer": "https://cart.jd.com/cart.action",
-        "Host": "cart.jd.com",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Accept-Encoding": "zh-CN,zh;q=0.9,ja;q=0.8",
-        "Origin": "https://cart.jd.com",
-        "Connection": "keep-alive"
-    }
-    resp = session.post(url, data=data, headers=headers)
-    logger.info('清空购物车')
-    if resp.status_code != requests.codes.OK:
-        print('Status: %u, Url: %s' % (resp.status_code, resp.url))
-        return False
-    return True
-
-
-def select_all_cart_item():
-    url = "https://cart.jd.com/selectAllItem.action"
-    data = {
-        't': 0,
-        'outSkus': '',
-        'random': random.random()
-    }
-    resp = session.post(url, data=data)
-    if resp.status_code != requests.codes.OK:
-        print('Status: %u, Url: %s' % (resp.status_code, resp.url))
-        return False
-    return True
-
-
-def normalModeAutoBuy(inStockSkuid):
-    for skuId in inStockSkuid:
-        if item_removed(skuId):
-            global submit_Time
-            submit_Time = int(time.time() * 1000)
-            logger.info('[%s]类型商品有货啦!马上下单', skuId)
-            skuidUrl = 'https://item.jd.com/' + skuId + '.html'
-            if normalModeBuyMask(skuId):
-                message.send(skuidUrl, True)
-                sys.exit(1)
-            else:
-                message.send(skuidUrl, False)
-        else:
-            logger.info('[%s]类型商品有货，但已下柜商品', skuId)
-
-
-def fastModeAutoBuy(inStockSkuid):
-    for skuId in inStockSkuid:
+def V4AutoBuy(skuId, inStockSkuid):
+    if skuId in inStockSkuid:
         global submit_Time
         submit_Time = int(time.time() * 1000)
         logger.info('[%s]类型商品有货啦!马上下单', skuId)
         skuidUrl = 'https://item.jd.com/' + skuId + '.html'
-        if fastModeBuyMask(skuId):
+        if buyMask(skuId):
             message.send(skuidUrl, True)
             sys.exit(1)
         else:
             if item_removed(skuId):
                 message.send(skuidUrl, False)
             else:
-                logger.info('[%s]商品已下柜，商品列表中踢出', skuId)
-                skuids.remove(skuId)
-            select_all_cart_item()
-            remove_item()
+                logger.info('[%s]已下柜商品', skuId)
+                sys.exit(1)
 
 
 def check_Config():
@@ -481,71 +448,37 @@ def check_Config():
         getconfig()
         configMd5 = nowMd5
 
-
-def normalMode():
-    flag = 1
-    while (1):
-        try:
-            if flag == 1:
-                validate_cookies()
-                getUsername()
-            # 检测配置文件是否修改
-            if int(time.time()) - configTime >= 60:
-                check_Config()
-            # modelType
-            logger.info('第' + str(flag) + '次 ')
-            flag += 1
-            # 检测库存
-            inStockSkuid = check_stock(checksession, skuids, area)
-            # 下单任务
-            normalModeAutoBuy(inStockSkuid)
-            # 休眠模块
-            timesleep = random.randint(1, 3) / 10
-            time.sleep(timesleep)
-            # 校验是否还在登录模块
-            if flag % 100 == 0:
-                logger.info('校验是否还在登录')
-                validate_cookies()
-        except Exception as e:
-            print(traceback.format_exc())
-            time.sleep(10)
-
-
-def fastMode():
-    flag = 1
-    while (1):
-        try:
-            if flag == 1:
-                validate_cookies()
-                getUsername()
-                select_all_cart_item()
-                remove_item()
-            # 检测配置文件修改
-            if int(time.time()) - configTime >= 600:
-                check_Config()
-            # modelType
-            logger.info('第' + str(flag) + '次 ')
-            flag += 1
-            # 检测库存
-            inStockSkuid = check_stock(checksession, skuids, area)
-            # 下单任务
-            fastModeAutoBuy(inStockSkuid)
-            # 休眠模块
-            timesleep = random.randint(1, 3) / 10
-            time.sleep(timesleep)
-            # 校验是否还在登录模块
-            if flag % 100 == 0:
-                logger.info('校验是否还在登录')
-                validate_cookies()
-        except Exception as e:
-            print(traceback.format_exc())
-            time.sleep(10)
-
-
-# _setDNSCache()
-if modelType == '2':
-    logger.info('V2版本当前模式[普通模式]')
-    normalMode()
-elif modelType == '1':
-    logger.info('V2版本当前模式[极速模式]')
-    fastMode()
+#
+# # _setDNSCache()
+# if len(skuids) != 1:
+#     logger.info('请准备一件商品')
+# skuId = skuids[0]
+# flag = 1
+# while (1):
+#     try:
+#         # 初始化校验
+#         if flag == 1:
+#             logger.info('当前是V3版本')
+#             validate_cookies()
+#             getUsername()
+#             select_all_cart_item()
+#             remove_item()
+#             add_item_to_cart(skuId)
+#         # 检测配置文件修改
+#         if int(time.time()) - configTime >= 60:
+#             check_Config()
+#         logger.info('第' + str(flag) + '次 ')
+#         flag += 1
+#         # 检查库存模块
+#         inStockSkuid = check_stock(checksession, skuids, area)
+#         # 自动下单模块
+#         V3AutoBuy(skuId, inStockSkuid)
+#         # 休眠模块
+#         timesleep = random.randint(1, 3) / 10
+#         time.sleep(timesleep)
+#         # 校验是否还在登录模块
+#         if flag % 100 == 0:
+#             V3check(skuId)
+#     except Exception as e:
+#         print(traceback.format_exc())
+#         time.sleep(10)

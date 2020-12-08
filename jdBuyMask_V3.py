@@ -2,7 +2,7 @@
 '''
 2020/2/13
 (避免滥用，代码已经废弃，现已不更新，有需要请适量使用exe版本)
-京东抢购口罩程序V3版本
+京东抢购商品程序V3版本
 '''
 import sys
 import traceback
@@ -19,12 +19,12 @@ from util import _setDNSCache
 '''
 需要修改
 '''
-global cookies_String, mail, sc_key, messageType, area, skuidsString, skuids, captchaUrl, eid, fp, payment_pwd
+global cookies_String, mail, sc_key, messageType, area, skuidsString, skuids, captchaUrl, eid, fp, payment_pwd, token
 
 
 def getconfig():
     global_config = Config()
-    global cookies_String, mail, sc_key, messageType, area, skuidsString, skuids, captchaUrl, eid, fp, payment_pwd
+    global cookies_String, mail, sc_key, messageType, area, skuidsString, skuids, captchaUrl, eid, fp, payment_pwd, token
     # cookie 网页获取
     cookies_String = global_config.getRaw('config', 'cookies_String')
     # 有货通知 收件邮箱
@@ -49,6 +49,7 @@ def getconfig():
     # eid
     eid = global_config.getRaw('Temporary', 'eid')
     fp = global_config.getRaw('Temporary', 'fp')
+    token = global_config.getRaw('Temporary', 'token')
     # 支付密码
     payment_pwd = global_config.getRaw('config', 'payment_pwd')
 
@@ -352,10 +353,14 @@ def get_checkout_page_detail():
     }
     try:
         resp = session.get(url=url, params=payload, headers=headers)
+        # logger.info(resp.text)
         if not response_status(resp):
             logger.error('获取订单结算页信息失败')
+            # logger.info(resp.text)
             return ''
-        if '刷新太频繁了' in resp.text:
+        elif '刷新太频繁了' in resp.text:
+            logger.info('失败：刷新太频繁了')
+            # logger.info(resp.text)
             return '刷新太频繁了'
         soup = BeautifulSoup(resp.text, "html.parser")
         showCheckCode = get_tag_value(soup.select('input#showCheckCode'), 'value')
@@ -376,7 +381,7 @@ def get_checkout_page_detail():
             'items': []
         }
 
-        logger.info("下单信息：%s", order_detail)
+        logger.info("下单信息：%s, risk_control: %s" % (order_detail, risk_control))
         return risk_control
     except requests.exceptions.RequestException as e:
         logger.error('订单结算页面获取异常：%s' % e)
@@ -411,12 +416,14 @@ def item_removed(sku_id):
 
 def buyMask(sku_id):
     risk_control = get_checkout_page_detail()
+
     if risk_control == '刷新太频繁了':
         return False
-    if len(risk_control) > 0:
-        if submit_order(session, risk_control, sku_id, skuids, submit_Time, encryptClientInfo, is_Submit_captcha,
-                        payment_pwd, submit_captcha_text, submit_captcha_rid):
-            return True
+    # if len(risk_control) > 0:
+
+    if submit_order(session, risk_control, sku_id, skuids, submit_Time, encryptClientInfo, is_Submit_captcha,
+                    payment_pwd, submit_captcha_text, submit_captcha_rid, eid, fp, token):
+        return True
 
 
 def V3check(skuId):
@@ -430,11 +437,11 @@ def V3check(skuId):
         sys.exit(1)
 
 
-def V3AutoBuy(inStockSkuid):
+def V3AutoBuy(skuId, inStockSkuid):
     if skuId in inStockSkuid:
         global submit_Time
         submit_Time = int(time.time() * 1000)
-        logger.info('[%s]类型口罩有货啦!马上下单', skuId)
+        logger.info('[%s]类型商品有货啦!马上下单', skuId)
         skuidUrl = 'https://item.jd.com/' + skuId + '.html'
         if buyMask(skuId):
             message.send(skuidUrl, True)
@@ -456,37 +463,37 @@ def check_Config():
         getconfig()
         configMd5 = nowMd5
 
-
-# _setDNSCache()
-if len(skuids) != 1:
-    logger.info('请准备一件商品')
-skuId = skuids[0]
-flag = 1
-while (1):
-    try:
-        # 初始化校验
-        if flag == 1:
-            logger.info('当前是V3版本')
-            validate_cookies()
-            getUsername()
-            select_all_cart_item()
-            remove_item()
-            add_item_to_cart(skuId)
-        # 检测配置文件修改
-        if int(time.time()) - configTime >= 60:
-            check_Config()
-        logger.info('第' + str(flag) + '次 ')
-        flag += 1
-        # 检查库存模块
-        inStockSkuid = check_stock(checksession, skuids, area)
-        # 自动下单模块
-        V3AutoBuy(inStockSkuid)
-        # 休眠模块
-        timesleep = random.randint(1, 3) / 10
-        time.sleep(timesleep)
-        # 校验是否还在登录模块
-        if flag % 100 == 0:
-            V3check(skuId)
-    except Exception as e:
-        print(traceback.format_exc())
-        time.sleep(10)
+#
+# # _setDNSCache()
+# if len(skuids) != 1:
+#     logger.info('请准备一件商品')
+# skuId = skuids[0]
+# flag = 1
+# while (1):
+#     try:
+#         # 初始化校验
+#         if flag == 1:
+#             logger.info('当前是V3版本')
+#             validate_cookies()
+#             getUsername()
+#             select_all_cart_item()
+#             remove_item()
+#             add_item_to_cart(skuId)
+#         # 检测配置文件修改
+#         if int(time.time()) - configTime >= 60:
+#             check_Config()
+#         logger.info('第' + str(flag) + '次 ')
+#         flag += 1
+#         # 检查库存模块
+#         inStockSkuid = check_stock(checksession, skuids, area)
+#         # 自动下单模块
+#         V3AutoBuy(skuId, inStockSkuid)
+#         # 休眠模块
+#         timesleep = random.randint(1, 3) / 10
+#         time.sleep(timesleep)
+#         # 校验是否还在登录模块
+#         if flag % 100 == 0:
+#             V3check(skuId)
+#     except Exception as e:
+#         print(traceback.format_exc())
+#         time.sleep(10)

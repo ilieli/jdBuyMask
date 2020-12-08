@@ -27,7 +27,7 @@ def sendMail(mail, msgtext):
         # msg['From'] = Header(from_addr)
         msg['From'] = Header(u'from Mark<{}>'.format(from_addr), 'utf-8')
         msg['To'] = Header(to_addr)
-        msg['Subject'] = Header('京东口罩监控','utf-8')
+        msg['Subject'] = Header('京东商品监控','utf-8')
         # 开启发信服务，这里使用的是加密传输
         server = smtplib.SMTP_SSL(host=smtp_server)
         server.connect(smtp_server, 465)

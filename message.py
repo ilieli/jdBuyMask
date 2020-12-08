@@ -20,9 +20,9 @@ class message(object):
     def send(self, desp='', isOrder=False):
         desp = str(desp)
         if isOrder:
-            msg = desp + ' 类型口罩，已经下单了。24小时内付款'
+            msg = desp + ' 类型商品，已经下单了。24小时内付款'
         else:
-            msg = desp + ' 类型口罩，下单失败了'
+            msg = desp + ' 类型商品，下单失败了'
         if self.messageType == '1':
             sendMail(self.mail, msg)
         if self.messageType == '2':
