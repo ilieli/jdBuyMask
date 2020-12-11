@@ -401,6 +401,7 @@ def buyMask(sku_id):
     risk_control = get_marathon_page_detail()
 
     if risk_control == '刷新太频繁了':
+        time.sleep(1)
         return False
     if risk_control == '抢购未成功':
         return False
@@ -430,13 +431,17 @@ def V4AutoBuy(skuId, inStockSkuid):
         skuidUrl = 'https://item.jd.com/' + skuId + '.html'
         if buyMask(skuId):
             message.send(skuidUrl, True)
-            sys.exit(1)
+            return True
         else:
             if item_removed(skuId):
                 message.send(skuidUrl, False)
             else:
                 logger.info('[%s]已下柜商品', skuId)
                 sys.exit(1)
+
+            return False
+    else:
+        return False
 
 
 def check_Config():

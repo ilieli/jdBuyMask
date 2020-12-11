@@ -418,6 +418,7 @@ def buyMask(sku_id):
     risk_control = get_checkout_page_detail()
 
     if risk_control == '刷新太频繁了':
+        time.sleep(1)
         return False
     # if len(risk_control) > 0:
 
@@ -445,13 +446,17 @@ def V3AutoBuy(skuId, inStockSkuid):
         skuidUrl = 'https://item.jd.com/' + skuId + '.html'
         if buyMask(skuId):
             message.send(skuidUrl, True)
-            sys.exit(1)
+            return True
         else:
             if item_removed(skuId):
                 message.send(skuidUrl, False)
             else:
                 logger.info('[%s]已下柜商品', skuId)
                 sys.exit(1)
+
+            return False
+    else:
+        return False
 
 
 def check_Config():

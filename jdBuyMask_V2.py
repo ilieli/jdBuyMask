@@ -370,6 +370,7 @@ def normalModeBuyMask(sku_id):
         add_item_to_cart(sku_id)
     risk_control = get_checkout_page_detail()
     if risk_control == '刷新太频繁了':
+        time.sleep(1)
         return False
     if len(risk_control) > 0:
         if submit_order(session, risk_control, sku_id, skuids, submit_Time, encryptClientInfo, is_Submit_captcha,
@@ -382,6 +383,7 @@ def fastModeBuyMask(sku_id):
     add_item_to_cart(sku_id)
     risk_control = get_checkout_page_detail()
     if risk_control == '刷新太频繁了':
+        time.sleep(1)
         return False
     if len(risk_control) > 0:
         if submit_order(session, risk_control, sku_id, skuids, submit_Time, encryptClientInfo, is_Submit_captcha,
